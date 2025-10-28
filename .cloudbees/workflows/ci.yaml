@@ -13,32 +13,26 @@ jobs:
       - name: Checkout code
         uses: cloudbees-io/checkout@v1
 
-      - name: Install dependencies
-        uses: docker://ghcr.io/astral-sh/uv:latest
+      - name: Run tests and quality checks
+        kind: test
+        uses: docker://python:3.12-slim
         run: |
+          set -e
           cd cli
+
+          # Install uv
+          pip install uv
+
+          # Install dependencies
           uv sync
 
-      - name: Run unit tests
-        kind: test
-        id: run-tests
-        uses: docker://ghcr.io/astral-sh/uv:latest
-        run: |
-          cd cli
+          # Run unit tests
           uv run pytest tests/ -v --junitxml=junit.xml
 
-      - name: Run linting
-        kind: test
-        uses: docker://ghcr.io/astral-sh/uv:latest
-        run: |
-          cd cli
+          # Run linting
           uv run ruff check cv/ tests/
 
-      - name: Run type checking
-        kind: test
-        uses: docker://ghcr.io/astral-sh/uv:latest
-        run: |
-          cd cli
+          # Run type checking
           uv run pyright cv/
 
       - name: Publish test results
@@ -89,7 +83,7 @@ jobs:
         uses: cloudbees-io/publish-evidence-item@v1
         with:
           content: |-
-            ## 🐳 Container Image Built and Pushed
+            ## Container Image Built and Pushed
 
             Successfully built and pushed container image to Docker Hub:
 
