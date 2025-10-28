@@ -1,0 +1,41 @@
+# Test: Multiple checks that all need to pass
+# Expected: Should pass immediately (all metrics are good)
+api_endpoint: "http://localhost:9090"
+poll_interval: 5
+timeout: 30
+
+checks:
+  - name: latency-check
+    description: "Verify p99 latency is below 500ms"
+    query:
+      endpoint: "/api/v1/query"
+      method: "POST"
+      headers:
+        Content-Type: "application/x-www-form-urlencoded"
+      body: "query=histogram_quantile(0.99, latency)"
+    extract:
+      path: "$.data.result[0].value[1]"
+      type: "number"
+    evaluate:
+      type: "threshold"
+      operator: "<"
+      value: 0.5  # 500ms
+
+  - name: uptime-check
+    description: "Verify service is up"
+    query:
+      endpoint: "/api/v1/query"
+      method: "POST"
+      headers:
+        Content-Type: "application/x-www-form-urlencoded"
+      body: "query=up{job='my-service'}"
+    extract:
+      path: "$.data.result[0].value[1]"
+      type: "number"
+    evaluate:
+      type: "threshold"
+      operator: "=="
+      value: 1
+
+evaluation:
+  mode: "all-pass"

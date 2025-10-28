@@ -15,5 +15,8 @@ RUN uv sync --frozen --no-dev
 RUN useradd -m -u 1000 cvuser && chown -R cvuser:cvuser /app
 USER cvuser
 
-ENTRYPOINT ["uv", "run", "cv"]
+# Use the installed package directly from venv
+ENV PATH="/app/.venv/bin:$PATH"
+
+ENTRYPOINT ["cv"]
 CMD ["--help"]

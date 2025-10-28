@@ -1,0 +1,25 @@
+# Test: Error rate that decreases over time
+# Expected: Should pass after ~20 seconds
+api_endpoint: "http://localhost:9090"
+poll_interval: 5
+timeout: 60
+
+checks:
+  - name: error-rate-check
+    description: "Monitor error rate - should decrease below threshold"
+    query:
+      endpoint: "/api/v1/query"
+      method: "POST"
+      headers:
+        Content-Type: "application/x-www-form-urlencoded"
+      body: "query=rate(error_rate[5m])"
+    extract:
+      path: "$.data.result[0].value[1]"
+      type: "number"
+    evaluate:
+      type: "threshold"
+      operator: "<"
+      value: 0.01  # Pass when error rate < 1%
+
+evaluation:
+  mode: "all-pass"
