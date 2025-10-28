@@ -1,0 +1,224 @@
+= CloudBees Action: Continuous Verification Base
+
+Base action for continuous verification of metrics and services. Polls metrics APIs on a configurable interval and evaluates thresholds to determine if a deployment or feature is healthy.
+
+== Inputs
+
+[cols="30%,15%,15%,40%",options="header"]
+.Input details
+|===
+| Input name | Data type | Required? | Description
+
+| `config`
+| String
+| Yes
+| YAML/JSON configuration for verification checks
+
+| `api-endpoint`
+| String
+| Yes
+| Base API endpoint URL
+
+| `auth-method`
+| String
+| No
+| Authentication method: `bearer`, `basic`, `api-key`, `header`, `none` (defaults to `none`)
+
+| `auth-token`
+| String
+| No
+| Authentication token/key
+
+| `auth-username`
+| String
+| No
+| Username for basic auth
+
+| `auth-password`
+| String
+| No
+| Password for basic auth
+
+| `auth-header-name`
+| String
+| No
+| Custom header name for api-key/header auth
+
+| `poll-interval`
+| String
+| No
+| Seconds between verification polls (defaults to `60`)
+
+| `timeout`
+| String
+| No
+| Maximum verification duration in seconds (defaults to `3600`)
+
+| `verify-ssl`
+| String
+| No
+| Verify SSL certificates; set to `false` for dev/test only (defaults to `true`)
+
+| `ca-bundle`
+| String
+| No
+| Path to custom CA bundle file
+|===
+
+== Outputs
+
+[cols="30%,70%",options="header"]
+.Output details
+|===
+| Output name | Description
+
+| `verification-status`
+| Verification result: `PASSED`, `FAILED`, or `TIMEOUT`
+
+| `checks-passed`
+| Number of checks that passed
+
+| `checks-failed`
+| Number of checks that failed
+
+| `detailed-results`
+| JSON with detailed results for each check
+
+| `duration`
+| Total verification duration in seconds
+
+| `poll-count`
+| Number of polls executed
+|===
+
+== Configuration Schema
+
+The `config` input accepts YAML or JSON with the following structure:
+
+[source,yaml]
+----
+checks:
+  - name: "check-identifier"
+    description: "Optional description"
+    query:
+      endpoint: "/api/path"
+      method: "GET"  # GET, POST, PUT, PATCH
+      headers:
+        Custom-Header: "value"
+      body: "request body"  # For POST/PUT
+      params:
+        query_param: "value"
+    extract:
+      path: "$.data.result[0].value"  # JSONPath expression
+      type: "number"  # number, string, boolean, json
+      default: null  # Optional default if extraction fails
+    evaluate:
+      type: "threshold"
+      operator: "<"  # <, >, <=, >=, ==, !=
+      value: 10
+
+evaluation:
+  mode: "all-pass"  # all-pass, any-pass, threshold
+  min_passed: 2  # For threshold mode
+
+output:
+  include_details: true
+  format: "json"
+----
+
+== Usage Example
+
+[source,yaml]
+----
+- name: Verify deployment health
+  uses: https://github.com/cb-demos/continuous-verification/base@latest
+  with:
+    api-endpoint: "http://prometheus:9090"
+    config: |
+      checks:
+        - name: error-rate-check
+          query:
+            endpoint: "/api/v1/query"
+            method: "POST"
+            body: "query=rate(http_errors_total[5m])"
+          extract:
+            path: "$.data.result[0].value[1]"
+            type: "number"
+          evaluate:
+            type: "threshold"
+            operator: "<"
+            value: 0.01
+    poll-interval: "60"
+    timeout: "1800"
+----
+
+== Multiple Checks Example
+
+[source,yaml]
+----
+- name: Verify multiple metrics
+  uses: https://github.com/cb-demos/continuous-verification/base@latest
+  with:
+    api-endpoint: "http://prometheus:9090"
+    config: |
+      checks:
+        - name: error-rate
+          query:
+            endpoint: "/api/v1/query"
+            method: "POST"
+            body: "query=rate(errors[5m])"
+          extract:
+            path: "$.data.result[0].value[1]"
+            type: "number"
+          evaluate:
+            type: "threshold"
+            operator: "<"
+            value: 0.01
+
+        - name: response-time
+          query:
+            endpoint: "/api/v1/query"
+            method: "POST"
+            body: "query=histogram_quantile(0.99, response_time)"
+          extract:
+            path: "$.data.result[0].value[1]"
+            type: "number"
+          evaluate:
+            type: "threshold"
+            operator: "<"
+            value: 500
+
+      evaluation:
+        mode: "all-pass"
+----
+
+== Authentication Example
+
+[source,yaml]
+----
+- name: Verify with bearer auth
+  uses: https://github.com/cb-demos/continuous-verification/base@latest
+  with:
+    api-endpoint: "https://api.example.com"
+    auth-method: "bearer"
+    auth-token: ${{ secrets.API_TOKEN }}
+    config: |
+      checks:
+        - name: health-check
+          query:
+            endpoint: "/health"
+          extract:
+            path: "$.status"
+            type: "string"
+          evaluate:
+            type: "threshold"
+            operator: "=="
+            value: "healthy"
+----
+
+== Exit Codes
+
+* `0`: Verification PASSED
+* `1`: Verification FAILED
+* `2`: Verification TIMEOUT
+* `3`: Configuration or runtime ERROR

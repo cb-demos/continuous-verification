@@ -1,0 +1,114 @@
+apiVersion: automation.cloudbees.io/v1alpha1
+kind: action
+name: continuous-verification-prometheus
+description: Continuous verification for Prometheus metrics
+
+inputs:
+  prometheus-url:
+    description: "Prometheus server URL"
+    required: true
+
+  query:
+    description: "PromQL query to execute"
+    required: true
+
+  threshold:
+    description: "Threshold value for comparison"
+    required: true
+
+  operator:
+    description: "Comparison operator: <, >, <=, >=, ==, !="
+    required: false
+    default: "<"
+
+  auth-method:
+    description: "Authentication method: bearer, basic, none"
+    required: false
+    default: "none"
+
+  auth-token:
+    description: "Bearer token for authentication"
+    required: false
+
+  auth-username:
+    description: "Username for basic auth"
+    required: false
+
+  auth-password:
+    description: "Password for basic auth"
+    required: false
+
+  poll-interval:
+    description: "Seconds between checks"
+    required: false
+    default: "60"
+
+  timeout:
+    description: "Maximum duration in seconds"
+    required: false
+    default: "3600"
+
+  verify-ssl:
+    description: "Verify SSL certificates (set to false for dev/test only)"
+    required: false
+    default: "true"
+
+outputs:
+  verification-status:
+    description: "Verification result: PASSED, FAILED, or TIMEOUT"
+    value: ${{ steps.base.outputs.verification-status }}
+
+  checks-passed:
+    description: "Number of checks that passed"
+    value: ${{ steps.base.outputs.checks-passed }}
+
+  checks-failed:
+    description: "Number of checks that failed"
+    value: ${{ steps.base.outputs.checks-failed }}
+
+  detailed-results:
+    description: "JSON with detailed results for each check"
+    value: ${{ steps.base.outputs.detailed-results }}
+
+  duration:
+    description: "Total verification duration in seconds"
+    value: ${{ steps.base.outputs.duration }}
+
+  poll-count:
+    description: "Number of polls executed"
+    value: ${{ steps.base.outputs.poll-count }}
+
+runs:
+  using: composite
+  steps:
+    - name: Run Prometheus verification
+      id: base
+      uses: https://github.com/cb-demos/continuous-verification/base@latest
+      with:
+        api-endpoint: ${{ inputs.prometheus-url }}
+        auth-method: ${{ inputs.auth-method }}
+        auth-token: ${{ inputs.auth-token }}
+        auth-username: ${{ inputs.auth-username }}
+        auth-password: ${{ inputs.auth-password }}
+        poll-interval: ${{ inputs.poll-interval }}
+        timeout: ${{ inputs.timeout }}
+        verify-ssl: ${{ inputs.verify-ssl }}
+        config: |
+          checks:
+            - name: prometheus-metric
+              description: "Verify Prometheus metric threshold"
+              query:
+                endpoint: "/api/v1/query"
+                method: "POST"
+                headers:
+                  Content-Type: "application/x-www-form-urlencoded"
+                body: "query=${{ inputs.query }}"
+              extract:
+                path: "$.data.result[0].value[1]"
+                type: "number"
+              evaluate:
+                type: "threshold"
+                operator: "${{ inputs.operator }}"
+                value: ${{ inputs.threshold }}
+          evaluation:
+            mode: "all-pass"

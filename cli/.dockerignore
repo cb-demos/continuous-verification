@@ -1,0 +1,41 @@
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info
+dist
+build
+.pytest_cache
+.ruff_cache
+
+# Virtual environments
+.venv
+venv
+ENV
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Tests
+tests/
+
+# Documentation
+README.md
+*.md
+
+# CI/CD
+.github
+
+# Development files
+Makefile

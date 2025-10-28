@@ -1,0 +1,183 @@
+= CloudBees Action: Continuous Verification for Prometheus
+
+Continuous verification for Prometheus metrics. This action wraps the base continuous verification action with Prometheus-specific configuration.
+
+== Inputs
+
+[cols="30%,15%,15%,40%",options="header"]
+.Input details
+|===
+| Input name | Data type | Required? | Description
+
+| `prometheus-url`
+| String
+| Yes
+| Prometheus server URL (e.g., `http://prometheus:9090`)
+
+| `query`
+| String
+| Yes
+| PromQL query to execute
+
+| `threshold`
+| String/Number
+| Yes
+| Threshold value for comparison
+
+| `operator`
+| String
+| No
+| Comparison operator: `<`, `>`, `\<=`, `>=`, `==`, `!=` (defaults to `<`)
+
+| `auth-method`
+| String
+| No
+| Authentication method: `bearer`, `basic`, `none` (defaults to `none`)
+
+| `auth-token`
+| String
+| No
+| Bearer token for authentication
+
+| `auth-username`
+| String
+| No
+| Username for basic auth
+
+| `auth-password`
+| String
+| No
+| Password for basic auth
+
+| `poll-interval`
+| String
+| No
+| Seconds between checks (defaults to `60`)
+
+| `timeout`
+| String
+| No
+| Maximum duration in seconds (defaults to `3600`)
+
+| `verify-ssl`
+| String
+| No
+| Verify SSL certificates; set to `false` for dev/test only (defaults to `true`)
+|===
+
+== Outputs
+
+[cols="30%,70%",options="header"]
+.Output details
+|===
+| Output name | Description
+
+| `verification-status`
+| Verification result: `PASSED`, `FAILED`, or `TIMEOUT`
+
+| `checks-passed`
+| Number of checks that passed
+
+| `checks-failed`
+| Number of checks that failed
+
+| `detailed-results`
+| JSON with detailed results for each check
+
+| `duration`
+| Total verification duration in seconds
+
+| `poll-count`
+| Number of polls executed
+|===
+
+== Usage Example
+
+[source,yaml]
+----
+- name: Verify error rate is below threshold
+  uses: https://github.com/cb-demos/continuous-verification/prometheus@latest
+  with:
+    prometheus-url: "http://prometheus:9090"
+    query: "rate(http_requests_errors_total[5m])"
+    threshold: "0.01"
+    operator: "<"
+    poll-interval: "60"
+    timeout: "1800"
+----
+
+== Monitor Response Time
+
+[source,yaml]
+----
+- name: Verify p99 latency
+  uses: https://github.com/cb-demos/continuous-verification/prometheus@latest
+  with:
+    prometheus-url: "http://prometheus:9090"
+    query: "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))"
+    threshold: "0.5"
+    operator: "<"
+----
+
+== Check Service Availability
+
+[source,yaml]
+----
+- name: Verify service uptime
+  uses: https://github.com/cb-demos/continuous-verification/prometheus@latest
+  with:
+    prometheus-url: "http://prometheus:9090"
+    query: "up{job='my-service'}"
+    threshold: "1"
+    operator: "=="
+----
+
+== With Authentication
+
+[source,yaml]
+----
+- name: Verify with basic auth
+  uses: https://github.com/cb-demos/continuous-verification/prometheus@latest
+  with:
+    prometheus-url: "https://prometheus.example.com"
+    query: "rate(http_requests_errors_total[5m])"
+    threshold: "0.01"
+    operator: "<"
+    auth-method: "basic"
+    auth-username: ${{ secrets.PROMETHEUS_USER }}
+    auth-password: ${{ secrets.PROMETHEUS_PASSWORD }}
+----
+
+== Conditional Deployment
+
+[source,yaml]
+----
+- name: Verify metrics before promoting
+  uses: https://github.com/cb-demos/continuous-verification/prometheus@latest
+  id: verification
+  with:
+    prometheus-url: ${{ secrets.PROMETHEUS_URL }}
+    query: "rate(errors_total{environment='staging'}[10m])"
+    threshold: "0.005"
+    operator: "<"
+    timeout: "600"
+
+- name: Rollback on failure
+  if: ${{ steps.verification.outputs.verification-status == 'FAILED' }}
+  run: |
+    echo "Verification failed, initiating rollback"
+    # Add rollback logic here
+
+- name: Promote to production
+  if: ${{ steps.verification.outputs.verification-status == 'PASSED' }}
+  run: |
+    echo "Verification passed, promoting to production"
+    # Add promotion logic here
+----
+
+== Exit Codes
+
+* `0`: Verification PASSED
+* `1`: Verification FAILED
+* `2`: Verification TIMEOUT
+* `3`: Configuration or runtime ERROR

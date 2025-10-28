@@ -1,0 +1,98 @@
+apiVersion: automation.cloudbees.io/v1alpha1
+kind: action
+name: continuous-verification-base
+description: Base action for continuous verification of metrics and services
+
+inputs:
+  config:
+    description: "YAML/JSON configuration for verification checks"
+    required: true
+
+  api-endpoint:
+    description: "Base API endpoint URL"
+    required: true
+
+  auth-method:
+    description: "Authentication method: bearer, basic, api-key, header, none"
+    required: false
+    default: "none"
+
+  auth-token:
+    description: "Authentication token/key"
+    required: false
+
+  auth-username:
+    description: "Username for basic auth"
+    required: false
+
+  auth-password:
+    description: "Password for basic auth"
+    required: false
+
+  auth-header-name:
+    description: "Custom header name for api-key/header auth"
+    required: false
+
+  poll-interval:
+    description: "Seconds between verification polls"
+    required: false
+    default: "60"
+
+  timeout:
+    description: "Maximum verification duration in seconds"
+    required: false
+    default: "3600"
+
+  verify-ssl:
+    description: "Verify SSL certificates (set to false for dev/test only)"
+    required: false
+    default: "true"
+
+  ca-bundle:
+    description: "Path to custom CA bundle file"
+    required: false
+
+outputs:
+  verification-status:
+    description: "Verification result: PASSED, FAILED, or TIMEOUT"
+    value: ${{ steps.verify.outputs.verification-status }}
+
+  checks-passed:
+    description: "Number of checks that passed"
+    value: ${{ steps.verify.outputs.checks-passed }}
+
+  checks-failed:
+    description: "Number of checks that failed"
+    value: ${{ steps.verify.outputs.checks-failed }}
+
+  detailed-results:
+    description: "JSON with detailed results for each check"
+    value: ${{ steps.verify.outputs.detailed-results }}
+
+  duration:
+    description: "Total verification duration in seconds"
+    value: ${{ steps.verify.outputs.duration }}
+
+  poll-count:
+    description: "Number of polls executed"
+    value: ${{ steps.verify.outputs.poll-count }}
+
+runs:
+  using: composite
+  steps:
+    - name: Run continuous verification
+      id: verify
+      uses: docker://cloudbeesdemo/continuous-verification:latest
+      run: |
+        # Build config file
+        cat > /tmp/cv-config.yaml <<'EOF'
+        ${{ inputs.config }}
+        EOF
+
+        # Run verification with outputs
+        cv verify \
+          --config-file /tmp/cv-config.yaml \
+          --poll-interval ${{ inputs.poll-interval }} \
+          --timeout ${{ inputs.timeout }} \
+          --output-dir "$CLOUDBEES_OUTPUTS" \
+          --verbose
