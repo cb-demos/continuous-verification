@@ -1,6 +1,7 @@
 """HTTP client with authentication support."""
 
 import json
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -34,6 +35,9 @@ class HTTPClient:
 
         # Configure SSL verification
         if ca_bundle:
+            bundle_path = Path(ca_bundle)
+            if not bundle_path.exists():
+                raise ValueError(f"CA bundle file not found: {ca_bundle}")
             verify = ca_bundle
         elif verify_ssl:
             verify = True
@@ -58,12 +62,13 @@ class HTTPClient:
         headers = {}
 
         if self.auth.method == AuthMethod.BEARER:
-            headers["Authorization"] = f"Bearer {self.auth.token}"
+            if self.auth.token:
+                headers["Authorization"] = f"Bearer {self.auth.token.get_secret_value()}"
         elif self.auth.method in (AuthMethod.API_KEY, AuthMethod.HEADER):
             # API_KEY and HEADER are the same - just a custom header
             # Validation in AuthConfig ensures token and header_name are present
             if self.auth.header_name and self.auth.token:
-                headers[self.auth.header_name] = self.auth.token
+                headers[self.auth.header_name] = self.auth.token.get_secret_value()
 
         return headers
 
@@ -97,7 +102,10 @@ class HTTPClient:
         # Handle basic auth
         # Validation in AuthConfig ensures username and password are present
         if self.auth.method == AuthMethod.BASIC:
-            kwargs["auth"] = (self.auth.username, self.auth.password)
+            if self.auth.password:
+                kwargs["auth"] = (self.auth.username, self.auth.password.get_secret_value())
+            else:
+                raise ValueError("Basic auth requires password")
 
         # Handle body
         if query.body:

@@ -1,0 +1,108 @@
+apiVersion: automation.cloudbees.io/v1alpha1
+kind: workflow
+name: Continuous Verification CLI - CI
+on:
+  push:
+    branches:
+      - "**"
+  workflow_dispatch:
+
+jobs:
+  test:
+    steps:
+      - name: Checkout code
+        uses: cloudbees-io/checkout@v1
+
+      - name: Install dependencies
+        uses: docker://ghcr.io/astral-sh/uv:latest
+        run: |
+          cd cli
+          uv sync
+
+      - name: Run unit tests
+        kind: test
+        id: run-tests
+        uses: docker://ghcr.io/astral-sh/uv:latest
+        run: |
+          cd cli
+          uv run pytest tests/ -v --junitxml=junit.xml
+
+      - name: Run linting
+        kind: test
+        uses: docker://ghcr.io/astral-sh/uv:latest
+        run: |
+          cd cli
+          uv run ruff check cv/ tests/
+
+      - name: Run type checking
+        kind: test
+        uses: docker://ghcr.io/astral-sh/uv:latest
+        run: |
+          cd cli
+          uv run pyright cv/
+
+      - name: Publish test results
+        uses: cloudbees-io/publish-test-results@v1
+        continue-on-error: true
+        with:
+          test-type: JUnit
+          folder-name: ${{ cloudbees.workspace }}/cli/junit.xml
+
+      - name: Publish evidence
+        uses: cloudbees-io/publish-evidence-item@v1
+        with:
+          content: |-
+            ## Tests Passed
+
+            All unit tests, linting, and type checking completed successfully.
+
+            - **Unit Tests**: Passed
+            - **Linting**: Passed
+            - **Type Checking**: Passed
+          format: MARKDOWN
+
+  build-and-push:
+    needs: test
+    steps:
+      - name: Checkout code
+        uses: cloudbees-io/checkout@v1
+        kind: build
+
+      - name: Configure container registry credentials
+        uses: cloudbees-io/configure-oci-credentials@v1
+        id: dockerconfig
+        with:
+          registry: https://index.docker.io/v1/
+          username: ${{ vars.DOCKER_USER }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+
+      - name: Build and push container image
+        uses: cloudbees-io/kaniko@v1
+        id: build-image
+        kind: build
+        with:
+          context: cli
+          dockerfile: cli/Dockerfile
+          destination: index.docker.io/${{ vars.DOCKER_USER }}/continuous-verification:${{ cloudbees.scm.sha }},index.docker.io/${{ vars.DOCKER_USER }}/continuous-verification:latest
+
+      - name: Publish evidence
+        uses: cloudbees-io/publish-evidence-item@v1
+        with:
+          content: |-
+            ## 🐳 Container Image Built and Pushed
+
+            Successfully built and pushed container image to Docker Hub:
+
+            - **Repository**: ${{ vars.DOCKER_USER }}/continuous-verification
+            - **Tags**:
+              - `${{ cloudbees.scm.sha }}`
+              - `latest`
+
+            [View on Docker Hub](https://hub.docker.com/repository/docker/${{ vars.DOCKER_USER }}/continuous-verification/tags)
+
+            ### Usage
+
+            ```bash
+            docker pull ${{ vars.DOCKER_USER }}/continuous-verification:${{ cloudbees.scm.sha }}
+            ```
+          format: MARKDOWN

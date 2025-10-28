@@ -101,8 +101,10 @@ def verify(
 
         # Run verification
         verifier = Verifier(config)
-        result = verifier.run()
-        verifier.close()
+        try:
+            result = verifier.run()
+        finally:
+            verifier.close()
 
         # Print summary
         logger.info("=" * 60)
@@ -120,12 +122,13 @@ def verify(
             write_outputs(result, output_dir)
 
         # Set exit code based on status
-        if result.status == VerificationStatus.PASSED:
-            sys.exit(EXIT_SUCCESS)
-        elif result.status == VerificationStatus.FAILED:
-            sys.exit(EXIT_FAILED)
-        else:  # TIMEOUT
-            sys.exit(EXIT_TIMEOUT)
+        match result.status:
+            case VerificationStatus.PASSED:
+                sys.exit(EXIT_SUCCESS)
+            case VerificationStatus.FAILED:
+                sys.exit(EXIT_FAILED)
+            case VerificationStatus.TIMEOUT:
+                sys.exit(EXIT_TIMEOUT)
 
     except Exception as e:
         logger.error("Verification failed: %s", str(e), exc_info=verbose)

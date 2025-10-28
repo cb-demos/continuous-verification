@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, SecretStr, model_validator
 
 
 class AuthMethod(str, Enum):
@@ -21,9 +21,9 @@ class AuthConfig(BaseModel):
     """Authentication configuration."""
 
     method: AuthMethod = AuthMethod.NONE
-    token: str | None = None
+    token: SecretStr | None = None
     username: str | None = None
-    password: str | None = None
+    password: SecretStr | None = None
     header_name: str | None = None
 
     @model_validator(mode="after")
@@ -42,14 +42,6 @@ class AuthConfig(BaseModel):
                 raise ValueError(f"{self.method.value} auth requires header_name")
         return self
 
-    def model_dump(self, **kwargs):
-        """Override to redact sensitive fields in output."""
-        data = super().model_dump(**kwargs)
-        if data.get("token"):
-            data["token"] = "***REDACTED***"
-        if data.get("password"):
-            data["password"] = "***REDACTED***"
-        return data
 
 
 class QueryConfig(BaseModel):

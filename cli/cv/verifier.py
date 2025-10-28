@@ -48,6 +48,8 @@ class Verifier:
         end_time = start_time + self.config.timeout
         poll_count = 0
         all_results: list[CheckResult] = []
+        last_status = VerificationStatus.FAILED
+        last_reason = "No checks completed"
 
         logger.info("Starting verification with %d check(s)", len(self.config.checks))
         logger.info(
@@ -66,37 +68,30 @@ class Verifier:
             all_results.extend(poll_results)
 
             # Evaluate overall status
-            status, reason = self._evaluate_overall(poll_results)
+            last_status, last_reason = self._evaluate_overall(poll_results)
 
-            if status == VerificationStatus.PASSED:
+            if last_status == VerificationStatus.PASSED:
                 logger.info("Verification PASSED after %d poll(s)", poll_count)
                 duration = int(time.time() - start_time)
-                return self._build_result(status, all_results, poll_count, duration)
+                return self._build_result(last_status, all_results, poll_count, duration)
 
             # If failed, continue polling until timeout
-            logger.debug("Status: %s, continuing to poll...", reason)
+            logger.debug("Status: %s, continuing to poll...", last_reason)
 
-            # Continue polling
-            if time.time() + self.config.poll_interval < end_time:
-                logger.debug(
-                    "Waiting %ds before next poll...", self.config.poll_interval
-                )
-                time.sleep(self.config.poll_interval)
-            else:
+            # Continue polling if there's enough time
+            if not self._should_continue_polling(end_time):
                 logger.debug("Not enough time for another poll before timeout")
                 break
 
-        # Timeout reached - determine final status from last poll
+            logger.debug("Waiting %ds before next poll...", self.config.poll_interval)
+            time.sleep(self.config.poll_interval)
+
+        # Timeout reached - use last poll status
         duration = int(time.time() - start_time)
         if all_results:
-            latest_poll_results = self._get_latest_results(all_results, poll_count)
-            final_status, reason = self._evaluate_overall(latest_poll_results)
-
-            if final_status == VerificationStatus.PASSED:
+            if last_status == VerificationStatus.PASSED:
                 logger.info("Verification PASSED on final poll")
-                return self._build_result(
-                    final_status, all_results, poll_count, duration
-                )
+                return self._build_result(last_status, all_results, poll_count, duration)
             else:
                 logger.warning(
                     "Verification FAILED: Checks did not pass within %ds", duration
@@ -118,6 +113,17 @@ class Verifier:
                 "Timeout before any polls completed",
             )
 
+    def _should_continue_polling(self, end_time: float) -> bool:
+        """Check if there's enough time for another poll.
+
+        Args:
+            end_time: End time for polling
+
+        Returns:
+            True if there's enough time for another poll
+        """
+        return time.time() + self.config.poll_interval < end_time
+
     def _execute_poll(self, poll_number: int) -> list[CheckResult]:
         """Execute all checks for a single poll iteration.
 
@@ -132,8 +138,8 @@ class Verifier:
             try:
                 result = self._execute_check(check, poll_number)
                 results.append(result)
-                status_icon = "✓" if result.success else "✗"
-                logger.info("  %s %s: %s", status_icon, check.name, result.message)
+                status_icon = "PASS" if result.success else "FAIL"
+                logger.info("  [%s] %s: %s", status_icon, check.name, result.message)
             except Exception as e:
                 # All errors become failed checks
                 result = CheckResult(
@@ -146,7 +152,7 @@ class Verifier:
                     poll_number=poll_number,
                 )
                 results.append(result)
-                logger.error("  ✗ %s: Error - %s", check.name, str(e))
+                logger.error("  [FAIL] %s: Error - %s", check.name, str(e))
 
         return results
 
@@ -239,7 +245,13 @@ class Verifier:
                     if isinstance(value, bool):
                         return value
                     if isinstance(value, str):
-                        return value.lower() not in ("false", "0", "")
+                        lower = value.lower().strip()
+                        if lower in ("true", "1", "yes", "on"):
+                            return True
+                        if lower in ("false", "0", "no", "off", ""):
+                            return False
+                        raise ValueError(f"Cannot convert string '{value}' to boolean")
+                    # For numbers: 0 = False, non-zero = True
                     return bool(value)
                 case "json":
                     # Keep as-is
